@@ -5,135 +5,43 @@
     <title>Монитор сделок | Канбан по источникам</title>
     <style>
         * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-            margin: 20px;
-            background: #f1f5f9;
-        }
-        h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            color: #0f172a;
-        }
-        .kanban {
-            display: flex;
-            gap: 24px;
-            overflow-x: auto;
-            align-items: flex-start;
-            padding-bottom: 16px;
-        }
-        .column {
-            background: white;
-            border-radius: 16px;
-            padding: 16px;
-            min-width: 300px;
-            max-width: 350px;
-            box-shadow: 0 4px 6px -2px rgba(0,0,0,0.05), 0 1px 2px 0 rgba(0,0,0,0.03);
-            border: 1px solid #e2e8f0;
-        }
-        .column h3 {
-            margin: 0 0 12px 0;
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #1e293b;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #cbd5e1;
-            display: flex;
-            justify-content: space-between;
-        }
-        .card {
-            background: #fefefe;
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 12px;
-            border-left: 4px solid #3b82f6;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            transition: all 0.1s ease;
-        }
-        .card:hover {
-            background: #f8fafc;
-            transform: translateY(-1px);
-        }
-        .card .title {
-            font-weight: 600;
-            font-size: 0.95rem;
-            color: #0f172a;
-            margin-bottom: 6px;
-        }
-        .card .meta {
-            font-size: 0.7rem;
-            color: #475569;
-            line-height: 1.4;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #64748b;
-            font-style: italic;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 30px;
-            color: #22c55e;
-            font-weight: 500;
-            background: #f0fdf4;
-            border-radius: 16px;
-        }
-        .footer {
-            margin-top: 24px;
-            font-size: 0.7rem;
-            color: #94a3b8;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 16px;
-        }
-        .badge {
-            background: #e2e8f0;
-            padding: 2px 8px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: normal;
-        }
+        body { font-family: system-ui, sans-serif; margin: 20px; background: #f1f5f9; }
+        h1 { font-size: 1.8rem; margin-bottom: 1rem; }
+        .kanban { display: flex; gap: 24px; overflow-x: auto; align-items: flex-start; }
+        .column { background: white; border-radius: 16px; padding: 16px; min-width: 300px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .column h3 { margin: 0 0 12px; display: flex; justify-content: space-between; }
+        .card { background: #fefefe; border-radius: 12px; padding: 12px; margin-bottom: 12px; border-left: 4px solid #3b82f6; }
+        .card .title { font-weight: bold; }
+        .card .meta { font-size: 0.7rem; color: #475569; }
+        .empty-state { text-align: center; padding: 30px; color: #22c55e; background: #f0fdf4; border-radius: 16px; }
+        .footer { margin-top: 24px; font-size: 0.7rem; text-align: center; color: #94a3b8; }
+        .badge { background: #e2e8f0; padding: 2px 8px; border-radius: 20px; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <h1>📋 Необработанные сделки <span style="font-size: 0.9rem;">(канбан по источникам)</span></h1>
-    <div id="kanban" class="kanban">⏳ Загрузка данных...</div>
-    <div class="footer">
-        🟢 Обновление в реальном времени (Supabase Realtime) | Последнее обновление: <span id="last-update">—</span>
-    </div>
+    <h1>📋 Необработанные сделки <span style="font-size:0.9rem">(канбан по источникам)</span></h1>
+    <div id="kanban" class="kanban">⏳ Загрузка...</div>
+    <div class="footer">🟢 Realtime | Обновление: <span id="last-update">—</span></div>
 
     <script>
-        // ========== КОНФИГУРАЦИЯ (ЗАМЕНИТЕ НА СВОИ ДАННЫЕ) ==========
-        const SUPABASE_URL = 'https://supabase.tautomate.ru';   // ← ваш URL
-        const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';  // ← ваш anon-ключ
+        const SUPABASE_URL = 'https://supabase.tautomate.ru';
+        const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';
         
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Основная функция: получает все сделки и фильтрует необработанные
         async function fetchUnreactedDeals() {
             try {
-                // 1. Все сделки
-                const { data: deals, error: dealsErr } = await supabase
-                    .from('deals_b24')
-                    .select('*')
-                    .order('date_create', { ascending: true });
-                if (dealsErr) throw dealsErr;
-
-                // 2. Логи, которые считаются реакцией
-                const { data: reactionLogs, error: logsErr } = await supabase
-                    .from('log_list')
-                    .select('deal_id')
+                const { data: deals, error: e1 } = await supabase.from('deals_b24').select('*').order('date_create', { ascending: true });
+                if (e1) throw e1;
+                const { data: reactionLogs, error: e2 } = await supabase.from('log_list').select('deal_id')
                     .or([
                         'and(deal_stage.eq.Уточнение информации,operation_end.not.is.null)',
                         'and(deal_stage.eq.Телефонное интервью,operation_end.not.is.null)',
                         'and(deal_stage.eq.Тестовое задание,status.eq.отправка приглашения)',
                         'or(operation_result.eq.Отказ,refuse_reason.not.is.null)'
                     ]);
-                if (logsErr) throw logsErr;
-
+                if (e2) throw e2;
                 const reactedIds = new Set(reactionLogs?.map(l => l.deal_id) || []);
                 return deals.filter(deal => !reactedIds.has(deal.id));
             } catch (err) {
@@ -144,51 +52,47 @@
 
         function groupBySource(deals) {
             const groups = {};
-            for (const deal of deals) {
-                const source = deal.source_id || '🔹 Без источника';
-                if (!groups[source]) groups[source] = [];
-                groups[source].push(deal);
+            for (const d of deals) {
+                const src = d.source_id || '🔹 Без источника';
+                if (!groups[src]) groups[src] = [];
+                groups[src].push(d);
             }
-            // сортировка внутри столбца по дате создания (старые сверху)
             for (const src in groups) {
                 groups[src].sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
             }
             return groups;
         }
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
-        }
+        function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
 
         function renderKanban(groups) {
             const container = document.getElementById('kanban');
             const sources = Object.keys(groups);
             if (sources.length === 0) {
-                container.innerHTML = '<div class="empty-state">✨ Отлично! Нет необработанных сделок ✨</div>';
+                container.innerHTML = '<div class="empty-state">✨ Нет необработанных сделок ✨</div>';
                 document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
                 return;
             }
             let html = '';
-            for (const source of sources) {
-                const deals = groups[source];
-                html += `<div class="column"><h3>${source} <span class="badge">${deals.length}</span></h3>`;
-                for (const deal of deals) {
-                    const created = new Date(deal.date_create).toLocaleString();
-                    const manager = deal.assigned_by_id || '—';
-                    const stage = deal.stage_id || '—';
-                    const contact = deal.contact_id || (deal.contact_ids?.[0] || '—');
+            for (const src of sources) {
+                const deals = groups[src];
+                html += `<div class="column"><h3>${src} <span class="badge">${deals.length}</span></h3>`;
+                for (const d of deals) {
+                    const created = new Date(d.date_create).toLocaleString();
+                    const manager = d.assigned_by_id || '—';
+                    const stage = d.stage_id || '—';
+                    const contact = d.contact_id || (d.contact_ids?.[0] || '—');
                     html += `<div class="card">
-                                <div class="title">${escapeHtml(deal.title || 'Без названия')}</div>
+                                <div class="title">${escapeHtml(d.title || 'Без названия')}</div>
                                 <div class="meta">
-                                    🕒 Создана: ${created}<br>
+                                    🕒 ${created}<br>
                                     👤 Менеджер: ${manager}<br>
                                     📌 Стадия: ${stage}<br>
                                     📞 Контакт: ${escapeHtml(contact)}
                                 </div>
                              </div>`;
                 }
-                html += `</div>`;
+                html += '</div>';
             }
             container.innerHTML = html;
             document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
@@ -201,26 +105,22 @@
                 renderKanban(grouped);
             } catch (err) {
                 console.error('Update failed:', err);
-                document.getElementById('kanban').innerHTML = '<div class="loading">⚠️ Ошибка загрузки данных. Проверьте консоль.</div>';
+                document.getElementById('kanban').innerHTML = '<div class="loading">⚠️ Ошибка загрузки</div>';
             }
         }
 
-        function subscribeToChanges() {
-            const channel = supabase
-                .channel('monitor-realtime')
+        function subscribe() {
+            supabase.channel('monitor')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'deals_b24' }, () => updateMonitor())
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'log_list' }, () => updateMonitor())
                 .subscribe((status) => {
                     if (status === 'SUBSCRIBED') console.log('✅ Realtime активен');
-                    else if (status === 'CHANNEL_ERROR') console.warn('⚠️ Realtime ошибка, работает polling');
                 });
-            return channel;
         }
 
-        // Запуск
         updateMonitor();
-        subscribeToChanges();
-        setInterval(updateMonitor, 30000); // fallback
+        subscribe();
+        setInterval(updateMonitor, 30000);
     </script>
 </body>
 </html>
