@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Монитор сделок | Канбан по источникам</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f1f5f9;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #0f172a;
+        }
+        .kanban {
+            display: flex;
+            gap: 24px;
+            overflow-x: auto;
+            align-items: flex-start;
+            padding-bottom: 16px;
+        }
+        .column {
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            min-width: 300px;
+            max-width: 350px;
+            box-shadow: 0 4px 6px -2px rgba(0,0,0,0.05), 0 1px 2px 0 rgba(0,0,0,0.03);
+            border: 1px solid #e2e8f0;
+        }
+        .column h3 {
+            margin: 0 0 12px 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #1e293b;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+        }
+        .card {
+            background: #fefefe;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.1s ease;
+        }
+        .card:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+        .card .title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #0f172a;
+            margin-bottom: 6px;
+        }
+        .card .meta {
+            font-size: 0.7rem;
+            color: #475569;
+            line-height: 1.4;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+            font-style: italic;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #22c55e;
+            font-weight: 500;
+            background: #f0fdf4;
+            border-radius: 16px;
+        }
+        .footer {
+            margin-top: 24px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 16px;
+        }
+        .badge {
+            background: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: normal;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>📋 Необработанные сделки <span style="font-size: 0.9rem;">(канбан по источникам)</span></h1>
+    <div id="kanban" class="kanban">⏳ Загрузка данных...</div>
+    <div class="footer">
+        🟢 Обновление в реальном времени (Supabase Realtime) | Последнее обновление: <span id="last-update">—</span>
+    </div>
+
+    <script>
+        // ========== КОНФИГУРАЦИЯ ==========
+        const SUPABASE_URL = 'https://supabase.tautomate.ru';
+        const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';
+        
+        // Инициализация клиента
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Функция вызова RPC
+        async function fetchUnreactedDeals() {
+            const { data, error } = await supabase.rpc('get_unreacted_deals');
+            if (error) {
+                console.error('RPC error:', error);
+                return [];
+            }
+            return data || [];
+        }
+
+        // Группировка по источнику
+        function groupBySource(deals) {
+            const groups = {};
+            for (const deal of deals) {
+                const source = deal.source_id || '🔹 Без источника';
+                if (!groups[source]) groups[source] = [];
+                groups[source].push(deal);
+            }
+            // Сортировка внутри каждой группы по дате создания (старые сверху — уже пришли отсортированными, но на всякий случай)
+            for (const source in groups) {
+                groups[source].sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
+            }
+            return groups;
+        }
+
+        // Рендер канбана
+        function renderKanban(groups) {
+            const container = document.getElementById('kanban');
+            const sources = Object.keys(groups);
+            
+            if (sources.length === 0) {
+                container.innerHTML = `<div class="empty-state">✨ Отлично! Нет необработанных сделок ✨</div>`;
+                return;
+            }
+
+            let html = '';
+            for (const source of sources) {
+                const deals = groups[source];
+                html += `<div class="column">
+                            <h3>${source} <span class="badge">${deals.length}</span></h3>`;
+                for (const deal of deals) {
+                    const created = new Date(deal.date_create).toLocaleString();
+                    const manager = deal.assigned_by_id || '—';
+                    const stage = deal.stage_id || '—';
+                    const contact = deal.contact_id || (deal.contact_ids?.[0] || '—');
+                    
+                    html += `<div class="card">
+                                <div class="title">${escapeHtml(deal.title || 'Без названия')}</div>
+                                <div class="meta">
+                                    🕒 Создана: ${created}<br>
+                                    👤 Менеджер: ${manager}<br>
+                                    📌 Стадия: ${stage}<br>
+                                    📞 Контакт: ${escapeHtml(contact)}
+                                </div>
+                             </div>`;
+                }
+                html += `</div>`;
+            }
+            container.innerHTML = html;
+            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+        }
+
+        // Простейшая защита от XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        // Основной цикл обновления
+        async function updateMonitor() {
+            try {
+                const deals = await fetchUnreactedDeals();
+                const grouped = groupBySource(deals);
+                renderKanban(grouped);
+            } catch (err) {
+                console.error('Update failed:', err);
+                document.getElementById('kanban').innerHTML = '<div class="loading">⚠️ Ошибка загрузки данных. Проверьте консоль.</div>';
+            }
+        }
+
+        // Настройка Realtime подписки (слушаем изменения в deals_b24 и log_list)
+        function subscribeToChanges() {
+            const channel = supabase
+                .channel('monitor-realtime')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'deals_b24' },
+                    () => updateMonitor()
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'log_list' },
+                    () => updateMonitor()
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Realtime активен');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.warn('⚠️ Realtime ошибка, будет работать polling');
+                    }
+                });
+        }
+
+        // Запуск
+        updateMonitor();
+        subscribeToChanges();
+        
+        // Polling fallback на случай разрыва WebSocket (раз в 30 секунд)
+        setInterval(updateMonitor, 30000);
+    </script>
+</body>
+</html>
