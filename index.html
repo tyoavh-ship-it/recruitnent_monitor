@@ -106,24 +106,42 @@
     </div>
 
     <script>
-        // ========== КОНФИГУРАЦИЯ ==========
-        const SUPABASE_URL = 'https://supabase.tautomate.ru';
-        const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';
+        // ========== КОНФИГУРАЦИЯ (ЗАМЕНИТЕ НА СВОИ ДАННЫЕ) ==========
+        const SUPABASE_URL = 'https://supabase.tautomate.ru';   // ← ваш URL
+        const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';  // ← ваш anon-ключ
         
-        // Инициализация клиента
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Функция вызова RPC
+        // Основная функция: получает все сделки и фильтрует необработанные
         async function fetchUnreactedDeals() {
-            const { data, error } = await supabase.rpc('get_unreacted_deals');
-            if (error) {
-                console.error('RPC error:', error);
+            try {
+                // 1. Все сделки
+                const { data: deals, error: dealsErr } = await supabase
+                    .from('deals_b24')
+                    .select('*')
+                    .order('date_create', { ascending: true });
+                if (dealsErr) throw dealsErr;
+
+                // 2. Логи, которые считаются реакцией
+                const { data: reactionLogs, error: logsErr } = await supabase
+                    .from('log_list')
+                    .select('deal_id')
+                    .or([
+                        'and(deal_stage.eq.Уточнение информации,operation_end.not.is.null)',
+                        'and(deal_stage.eq.Телефонное интервью,operation_end.not.is.null)',
+                        'and(deal_stage.eq.Тестовое задание,status.eq.отправка приглашения)',
+                        'or(operation_result.eq.Отказ,refuse_reason.not.is.null)'
+                    ]);
+                if (logsErr) throw logsErr;
+
+                const reactedIds = new Set(reactionLogs?.map(l => l.deal_id) || []);
+                return deals.filter(deal => !reactedIds.has(deal.id));
+            } catch (err) {
+                console.error('fetchUnreactedDeals error:', err);
                 return [];
             }
-            return data || [];
         }
 
-        // Группировка по источнику
         function groupBySource(deals) {
             const groups = {};
             for (const deal of deals) {
@@ -131,34 +149,35 @@
                 if (!groups[source]) groups[source] = [];
                 groups[source].push(deal);
             }
-            // Сортировка внутри каждой группы по дате создания (старые сверху — уже пришли отсортированными, но на всякий случай)
-            for (const source in groups) {
-                groups[source].sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
+            // сортировка внутри столбца по дате создания (старые сверху)
+            for (const src in groups) {
+                groups[src].sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
             }
             return groups;
         }
 
-        // Рендер канбана
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
+        }
+
         function renderKanban(groups) {
             const container = document.getElementById('kanban');
             const sources = Object.keys(groups);
-            
             if (sources.length === 0) {
-                container.innerHTML = `<div class="empty-state">✨ Отлично! Нет необработанных сделок ✨</div>`;
+                container.innerHTML = '<div class="empty-state">✨ Отлично! Нет необработанных сделок ✨</div>';
+                document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
                 return;
             }
-
             let html = '';
             for (const source of sources) {
                 const deals = groups[source];
-                html += `<div class="column">
-                            <h3>${source} <span class="badge">${deals.length}</span></h3>`;
+                html += `<div class="column"><h3>${source} <span class="badge">${deals.length}</span></h3>`;
                 for (const deal of deals) {
                     const created = new Date(deal.date_create).toLocaleString();
                     const manager = deal.assigned_by_id || '—';
                     const stage = deal.stage_id || '—';
                     const contact = deal.contact_id || (deal.contact_ids?.[0] || '—');
-                    
                     html += `<div class="card">
                                 <div class="title">${escapeHtml(deal.title || 'Без названия')}</div>
                                 <div class="meta">
@@ -175,18 +194,6 @@
             document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
         }
 
-        // Простейшая защита от XSS
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
-
-        // Основной цикл обновления
         async function updateMonitor() {
             try {
                 const deals = await fetchUnreactedDeals();
@@ -198,35 +205,22 @@
             }
         }
 
-        // Настройка Realtime подписки (слушаем изменения в deals_b24 и log_list)
         function subscribeToChanges() {
             const channel = supabase
                 .channel('monitor-realtime')
-                .on(
-                    'postgres_changes',
-                    { event: '*', schema: 'public', table: 'deals_b24' },
-                    () => updateMonitor()
-                )
-                .on(
-                    'postgres_changes',
-                    { event: '*', schema: 'public', table: 'log_list' },
-                    () => updateMonitor()
-                )
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'deals_b24' }, () => updateMonitor())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'log_list' }, () => updateMonitor())
                 .subscribe((status) => {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('✅ Realtime активен');
-                    } else if (status === 'CHANNEL_ERROR') {
-                        console.warn('⚠️ Realtime ошибка, будет работать polling');
-                    }
+                    if (status === 'SUBSCRIBED') console.log('✅ Realtime активен');
+                    else if (status === 'CHANNEL_ERROR') console.warn('⚠️ Realtime ошибка, работает polling');
                 });
+            return channel;
         }
 
         // Запуск
         updateMonitor();
         subscribeToChanges();
-        
-        // Polling fallback на случай разрыва WebSocket (раз в 30 секунд)
-        setInterval(updateMonitor, 30000);
+        setInterval(updateMonitor, 30000); // fallback
     </script>
 </body>
 </html>
