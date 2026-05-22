@@ -1,797 +1,612 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>HR-monitor: необработанные сделки</title>
-    <!-- Supabase JS v2 CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime-монитор необработанных сделок</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --col-bg: #ffffff;
+      --accent: #3b82f6;
+      --text-main: #0f172a;
+      --text-sec: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      --radius-card: 12px;
+      --radius-col: 16px;
+    }
 
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-            background: #f1f5f9;
-            color: #0f172a;
-            padding: 1.5rem;
-        }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-        /* Контейнер приложения */
-        .app-container {
-            max-width: 1600px;
-            margin: 0 auto;
-        }
+    /* Header & Tabs */
+    header {
+      background: var(--card-bg);
+      padding: 12px 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+    .tabs { display: flex; gap: 8px; }
+    .tab-btn {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-sec);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active { background: #eff6ff; color: var(--accent); font-weight: 600; }
+    .tab-btn:hover:not(.active) { background: #f8fafc; }
 
-        /* Шапка и вкладки */
-        .header {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            gap: 1rem;
-        }
+    /* Main Content */
+    main { flex: 1; overflow: hidden; position: relative; }
+    section { height: 100%; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+    section[hidden] { display: none; }
 
-        .tabs {
-            display: flex;
-            gap: 0.5rem;
-            background: #e2e8f0;
-            padding: 0.25rem;
-            border-radius: 2rem;
-        }
+    /* Kanban */
+    #kanban-wrapper {
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+      display: flex;
+      gap: 16px;
+      padding-bottom: 8px;
+      scroll-behavior: smooth;
+    }
+    .kanban-col {
+      min-width: 290px;
+      max-width: 320px;
+      background: var(--col-bg);
+      border-radius: var(--radius-col);
+      box-shadow: var(--shadow);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .col-header {
+      font-weight: 600;
+      font-size: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .col-count {
+      background: var(--accent);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+    .cards-list { flex: 1; overflow-y: auto; padding-right: 4px; }
+    .cards-list::-webkit-scrollbar { width: 4px; }
+    .cards-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
-        .tab-btn {
-            padding: 0.5rem 1.5rem;
-            border: none;
-            background: transparent;
-            border-radius: 2rem;
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            color: #334155;
-        }
+    .deal-card {
+      background: var(--card-bg);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius-card);
+      padding: 10px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      cursor: default;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .deal-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .deal-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; line-height: 1.3; }
+    .deal-meta { font-size: 11px; color: var(--text-sec); display: flex; flex-direction: column; gap: 3px; }
+    .meta-row { display: flex; justify-content: space-between; }
+    .time-rel { color: var(--accent); font-weight: 500; }
 
-        .tab-btn.active {
-            background: white;
-            color: #3b82f6;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
+    .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--text-sec);
+      font-style: italic;
+    }
 
-        .action-buttons {
-            display: flex;
-            gap: 0.75rem;
-        }
+    /* Report */
+    .report-controls {
+      background: var(--col-bg);
+      padding: 16px;
+      border-radius: var(--radius-col);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
+    .control-group label { font-size: 12px; font-weight: 500; color: var(--text-sec); }
+    .control-group input, .control-group select {
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .btn {
+      padding: 8px 16px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      height: fit-content;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
 
-        .btn-secondary {
-            background: white;
-            border: 1px solid #cbd5e1;
-            padding: 0.5rem 1rem;
-            border-radius: 2rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.85rem;
-        }
+    .report-table-wrapper {
+      flex: 1;
+      overflow: auto;
+      background: var(--col-bg);
+      border-radius: var(--radius-col);
+      box-shadow: var(--shadow);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #f8fafc; font-weight: 600; position: sticky; top: 0; }
+    tr:hover { background: #f1f5f9; }
 
-        .btn-secondary:hover {
-            background: #f8fafc;
-            border-color: #94a3b8;
-        }
+    /* Footer */
+    footer {
+      padding: 10px 24px;
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-sec);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .status-dot.offline { background: #ef4444; }
 
-        .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            font-size: 0.8rem;
-            background: #e2e8f0;
-            padding: 0.3rem 0.8rem;
-            border-radius: 2rem;
-        }
-
-        .green-dot {
-            width: 10px;
-            height: 10px;
-            background-color: #22c55e;
-            border-radius: 50%;
-            display: inline-block;
-            box-shadow: 0 0 0 1px white;
-        }
-
-        /* Канбан-стили */
-        .kanban-wrapper {
-            overflow-x: auto;
-            padding-bottom: 0.5rem;
-        }
-
-        .kanban-board {
-            display: flex;
-            gap: 1.25rem;
-            align-items: flex-start;
-        }
-
-        .kanban-column {
-            flex: 0 0 300px;
-            background: white;
-            border-radius: 1rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            display: flex;
-            flex-direction: column;
-            max-height: 75vh;
-            overflow-y: auto;
-        }
-
-        .column-header {
-            padding: 1rem;
-            border-bottom: 1px solid #e2e8f0;
-            font-weight: 700;
-            background: #fefefe;
-            position: sticky;
-            top: 0;
-            background: white;
-            border-radius: 1rem 1rem 0 0;
-        }
-
-        .cards-list {
-            padding: 0.75rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .deal-card {
-            background: white;
-            border-left: 4px solid #3b82f6;
-            border-radius: 0.75rem;
-            padding: 0.75rem;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            transition: transform 0.1s ease;
-            font-size: 0.85rem;
-        }
-
-        .deal-title {
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            word-break: break-word;
-        }
-
-        .deal-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            font-size: 0.7rem;
-            color: #475569;
-            margin-top: 0.4rem;
-        }
-
-        .deal-meta span {
-            background: #f1f5f9;
-            padding: 0.2rem 0.5rem;
-            border-radius: 1rem;
-        }
-
-        .empty-message {
-            text-align: center;
-            padding: 2rem 1rem;
-            color: #64748b;
-            font-weight: 500;
-        }
-
-        /* отчёт */
-        .report-section {
-            background: white;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-
-        .filters-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            align-items: flex-end;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.3rem;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .filter-group label {
-            font-size: 0.7rem;
-            color: #475569;
-        }
-
-        select, input, button {
-            padding: 0.4rem 0.6rem;
-            border-radius: 0.5rem;
-            border: 1px solid #cbd5e1;
-            background: white;
-        }
-
-        .group-radio {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        .group-radio label {
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-            font-weight: normal;
-        }
-
-        .report-table-wrapper {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-        }
-
-        th, td {
-            border: 1px solid #e2e8f0;
-            padding: 0.6rem;
-            text-align: left;
-        }
-
-        th {
-            background: #f8fafc;
-            font-weight: 600;
-        }
-
-        .export-btn {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .error-msg {
-            background: #fee2e2;
-            color: #b91c1c;
-            padding: 0.75rem;
-            border-radius: 0.75rem;
-            margin-bottom: 1rem;
-        }
-
-        footer {
-            margin-top: 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            color: #475569;
-        }
-
-        @media (max-width: 640px) {
-            body { padding: 1rem; }
-            .kanban-column { flex-basis: 260px; }
-        }
-    </style>
+    /* Mobile */
+    @media (max-width: 768px) {
+      .kanban-col { min-width: 100%; max-width: 100%; }
+      header { padding: 10px 12px; }
+      .report-controls { flex-direction: column; }
+      .control-group { min-width: 100%; }
+    }
+  </style>
 </head>
 <body>
-<div class="app-container">
-    <div class="header">
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="kanban">📋 Канбан сделок</button>
-            <button class="tab-btn" data-tab="report">📊 Отчёт: скорость реакции</button>
-        </div>
-        <div class="action-buttons">
-            <button id="manualRefreshBtn" class="btn-secondary">🔄 Обновить вручную</button>
-            <div class="status-badge" id="realtimeStatus">
-                <span class="green-dot"></span> Realtime активен
-            </div>
-        </div>
+
+  <header>
+    <div style="font-weight: 700; font-size: 16px;">📊 HR Deals Monitor</div>
+    <div class="tabs">
+      <button class="tab-btn active" data-view="kanban">Канбан</button>
+      <button class="tab-btn" data-view="report">Скорость реагирования</button>
+      <button class="btn btn-outline" id="btn-refresh" title="Обновить вручную">🔄 Обновить</button>
     </div>
+  </header>
 
-    <!-- Канбан панель -->
-    <div id="kanbanPanel">
-        <div class="kanban-wrapper">
-            <div id="kanbanBoard" class="kanban-board">
-                <!-- динамические колонки -->
-                <div class="empty-message" style="width:100%">Загрузка сделок...</div>
-            </div>
+  <main id="app">
+    <!-- КАНБАН -->
+    <section id="view-kanban">
+      <div id="kanban-wrapper">
+        <div class="empty-state" id="kanban-empty">Загрузка данных...</div>
+      </div>
+    </section>
+
+    <!-- ОТЧЁТ -->
+    <section id="view-report" hidden>
+      <div class="report-controls">
+        <div class="control-group">
+          <label>Период с</label>
+          <input type="date" id="rep-from">
         </div>
-        <footer>
-            <span>⏱️ Последнее обновление: <span id="lastUpdateTime">—</span></span>
-            <span>📌 Только необработанные сделки (без реакции) • лимит 200 последних</span>
-        </footer>
-    </div>
-
-    <!-- Отчёт панель (скрыта по умолчанию) -->
-    <div id="reportPanel" style="display: none;">
-        <div class="report-section">
-            <div class="filters-grid">
-                <div class="filter-group">
-                    <label>Период (дата создания)</label>
-                    <input type="date" id="dateFrom"> — <input type="date" id="dateTo">
-                </div>
-                <div class="filter-group">
-                    <label>Источник (source_id)</label>
-                    <select id="sourceFilter" multiple size="1" style="min-width:140px">
-                        <option value="all">Все источники</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Менеджер (assigned_by_id)</label>
-                    <select id="managerFilter" multiple size="1" style="min-width:140px">
-                        <option value="all">Все менеджеры</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Должность (стадия первой реакции)</label>
-                    <select id="positionFilter" multiple size="1">
-                        <option value="all">Все стадии</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Группировка</label>
-                    <div class="group-radio">
-                        <label><input type="radio" name="groupBy" value="month"> Месяц</label>
-                        <label><input type="radio" name="groupBy" value="source"> Источник</label>
-                        <label><input type="radio" name="groupBy" value="manager"> Менеджер</label>
-                        <label><input type="radio" name="groupBy" value="position" checked> Должность (стадия)</label>
-                    </div>
-                </div>
-                <button id="applyReportBtn" class="btn-secondary" style="background:#3b82f6; color:white;">Применить</button>
-                <button id="exportCsvBtn" class="btn-secondary export-btn">📎 Экспорт CSV</button>
-            </div>
-            <div id="reportResult">
-                <div class="empty-message">Задайте фильтры и нажмите "Применить"</div>
-            </div>
+        <div class="control-group">
+          <label>Период по</label>
+          <input type="date" id="rep-to">
         </div>
-    </div>
-</div>
+        <div class="control-group">
+          <label>Источник</label>
+          <select id="rep-source"><option value="">Все источники</option></select>
+        </div>
+        <div class="control-group">
+          <label>Менеджер</label>
+          <select id="rep-manager"><option value="">Все менеджеры</option></select>
+        </div>
+        <button class="btn" id="btn-run-report">Построить</button>
+        <button class="btn btn-outline" id="btn-export-csv">📥 CSV</button>
+      </div>
+      <div class="report-table-wrapper">
+        <table id="report-table">
+          <thead>
+            <tr><th>Группировка</th><th>Всего сделок</th><th>Отреагировано</th><th>Ср. время (ч)</th><th>Медиана (ч)</th><th>Мин/Макс (ч)</th></tr>
+          </thead>
+          <tbody id="report-body"><tr><td colspan="6" style="text-align:center; padding:40px;">Настройте фильтры и нажмите "Построить"</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 
-<script>
-    // ======================== КОНФИГУРАЦИЯ (ЗАМЕНИТЬ ПРИ ДЕПЛОЕ) ========================
-    const SUPABASE_URL = 'https://supabase.tautomate.ru';      // заменить
-    const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';                 // заменить
+  <footer id="footer">
+    <span id="last-update">Последнее обновление: —</span>
+    <span><span class="status-dot" id="status-dot"></span><span id="rt-status">Realtime</span></span>
+  </footer>
 
-    // ======================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ================================
-    let supabase;
-    let currentTab = 'kanban';
-    let realtimeChannel = null;
-    let pollingInterval = null;
-    let lastUpdateTimestamp = new Date();
+  <!-- Подключение Supabase JS v2 -->
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-    // DOM элементы
-    const kanbanPanel = document.getElementById('kanbanPanel');
-    const reportPanel = document.getElementById('reportPanel');
-    const kanbanBoardDiv = document.getElementById('kanbanBoard');
-    const lastUpdateSpan = document.getElementById('lastUpdateTime');
-    const manualRefreshBtn = document.getElementById('manualRefreshBtn');
-    const realtimeStatusSpan = document.getElementById('realtimeStatus');
+    // ==========================================
+    // 🔧 КОНФИГУРАЦИЯ (ЗАМЕНИТЕ НА СВОИ ДАННЫЕ)
+    // ==========================================
+    const SUPABASE_URL = 'https://supabase.tautomate.ru';
+    const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc3ODA3Mjg4MCwiZXhwIjo0OTMzNzQ2NDgwLCJyb2xlIjoiYW5vbiJ9.WW_HERdUwaUgrZtnjPjJPRFK09_vxQU8byYGAELEL7I';
 
-    // ======================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===============================
-    function formatLocalDate(dateStr) {
-        if(!dateStr) return '—';
-        const d = new Date(dateStr);
-        return d.toLocaleString('ru-RU', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
-    }
+    // Инициализация клиента (избегаем конфликта имен 'supabase')
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    function timeAgo(dateStr) {
-        const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
-        if (seconds < 60) return 'только что';
-        const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes} мин назад`;
-        const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `${hours} ч назад`;
-        const days = Math.floor(hours / 24);
-        return `${days} дн назад`;
-    }
+    // Глобальное состояние
+    const state = {
+      deals: [],
+      logs: [],
+      realtimeConnected: false,
+      refreshInterval: null,
+      debounceTimer: null
+    };
 
-    function showError(msg) {
-        console.error(msg);
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-msg';
-        errorDiv.innerText = `⚠️ ${msg}`;
-        const container = currentTab === 'kanban' ? kanbanBoardDiv : document.getElementById('reportResult');
-        if(currentTab === 'kanban' && !document.querySelector('.error-msg')) {
-            kanbanBoardDiv.innerHTML = '';
-            kanbanBoardDiv.appendChild(errorDiv);
-            setTimeout(() => errorDiv.remove(), 4000);
-        } else if(currentTab !== 'kanban') {
-            console.warn('Ошибка в отчете:', msg);
-        }
-    }
+    // ==========================================
+    // 📦 УТИЛИТЫ
+    // ==========================================
+    const fmtDate = (iso) => {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    };
+    const getRelativeTime = (iso) => {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return `${mins} мин назад`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs} ч назад`;
+      return `${Math.floor(hrs / 24)} дн назад`;
+    };
 
-    // ======================== ОПРЕДЕЛЕНИЕ РЕАКЦИИ ====================================
-    function hasReaction(logsArray) {
-        if (!logsArray || logsArray.length === 0) return false;
-        return logsArray.some(log => {
-            // Уточнение информации с operation_end
-            if (log.deal_stage === 'Уточнение информации' && log.operation_end !== null) return true;
-            // Телефонное интервью с operation_end
-            if (log.deal_stage === 'Телефонное интервью' && log.operation_end !== null) return true;
-            // Тестовое задание со статусом "отправка приглашения"
-            if (log.deal_stage === 'Тестовое задание' && log.status === 'отправка приглашения') return true;
-            // Отказ в любом виде
-            if (log.operation_result === 'Отказ' || (log.refuse_reason !== null && log.refuse_reason !== '')) return true;
-            return false;
-        });
-    }
+    // Определение: есть ли реакция на сделку?
+    const hasReaction = (dealId, logs) => {
+      const dealLogs = logs.filter(l => l.deal_id === dealId);
+      return dealLogs.some(l => {
+        if ((l.deal_stage === 'Уточнение информации' || l.deal_stage === 'Телефонное интервью') && l.operation_end) return true;
+        if (l.deal_stage === 'Тестовое задание' && l.status === 'отправка приглашения') return true;
+        if (l.operation_result === 'Отказ' || l.refuse_reason != null) return true;
+        return false;
+      });
+    };
 
-    // Получить время реакции (минимальное время среди подходящих логов)
-    function getReactionTime(dealCreateDate, logsArray) {
-        if (!logsArray || logsArray.length === 0) return null;
-        const reactionLogs = logsArray.filter(log => {
-            if (log.deal_stage === 'Уточнение информации' && log.operation_end) return true;
-            if (log.deal_stage === 'Телефонное интервью' && log.operation_end) return true;
-            if (log.deal_stage === 'Тестовое задание' && log.status === 'отправка приглашения') return true;
-            if (log.operation_result === 'Отказ' || log.refuse_reason) return true;
-            return false;
-        });
-        if (reactionLogs.length === 0) return null;
-        const timestamps = reactionLogs.map(log => {
-            if (log.operation_end) return new Date(log.operation_end);
-            if (log.created_at) return new Date(log.created_at);
-            return null;
-        }).filter(t => t !== null);
-        if (timestamps.length === 0) return null;
-        const minReaction = new Date(Math.min(...timestamps));
-        const diffHours = (minReaction - new Date(dealCreateDate)) / (1000 * 60 * 60);
-        return diffHours;
-    }
+    // Безопасное извлечение контакта из JSONB
+    const getContactInfo = (deal) => {
+      if (deal.contact_id) return deal.contact_id;
+      if (deal.contact_ids && typeof deal.contact_ids === 'object') {
+        const arr = Object.values(deal.contact_ids);
+        return arr.length > 0 ? arr[0] : '—';
+      }
+      return '—';
+    };
 
-    // ======================== ЗАГРУЗКА НЕОБРАБОТАННЫХ СДЕЛОК (КАНБАН) =================
+    // ==========================================
+    // 📊 ФУНКЦИИ ДАННЫХ
+    // ==========================================
     async function fetchUnreactedDeals() {
-        try {
-            // 1. Получить последние 200 сделок
-            const { data: deals, error: dealsError } = await supabase
-                .from('deals_b24')
-                .select('id, title, source_id, assigned_by_id, date_create, stage_id, contact_id, contact_ids')
-                .order('date_create', { ascending: false })
-                .limit(200);
-            if (dealsError) throw dealsError;
-            if (!deals || deals.length === 0) return [];
+      try {
+        // 1. Загружаем последние 200 сделок
+        const { data: deals, error: errD } = await db
+          .from('deals_b24')
+          .select('id, title, source_id, assigned_by_id, date_create, stage_id, contact_id, contact_ids')
+          .order('date_create', { ascending: false })
+          .limit(200);
+        if (errD) throw errD;
+        if (!deals || deals.length === 0) return { unreacted: [], logs: [] };
 
-            const dealIds = deals.map(d => d.id);
-            // 2. Получить все логи для этих сделок
-            const { data: logs, error: logsError } = await supabase
-                .from('log_list')
-                .select('id, deal_id, deal_stage, operation_end, status, operation_result, refuse_reason, created_at')
-                .in('deal_id', dealIds);
-            if (logsError) throw logsError;
+        // 2. Загружаем логи только для этих сделок
+        const dealIds = deals.map(d => d.id);
+        const { data: logs, error: errL } = await db
+          .from('log_list')
+          .select('deal_id, deal_stage, operation_end, status, operation_result, refuse_reason')
+          .in('deal_id', dealIds);
+        if (errL) throw errL;
 
-            // группировка логов по deal_id
-            const logsByDeal = {};
-            (logs || []).forEach(log => {
-                if (!logsByDeal[log.deal_id]) logsByDeal[log.deal_id] = [];
-                logsByDeal[log.deal_id].push(log);
-            });
-
-            // Фильтр: только сделки без реакции
-            const unreacted = deals.filter(deal => !hasReaction(logsByDeal[deal.id] || []));
-            // сортировка внутри групп будет позже, но сначала сортируем по дате создания ASC
-            unreacted.sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
-            return unreacted;
-        } catch (err) {
-            console.error('fetchUnreactedDeals error:', err);
-            showError('Не удалось загрузить сделки. Проверьте консоль.');
-            return [];
-        }
+        // 3. Фильтруем необработанные
+        const unreacted = deals.filter(d => !hasReaction(d.id, logs || []));
+        return { unreacted, logs: logs || [] };
+      } catch (e) {
+        console.error('Ошибка загрузки данных:', e);
+        throw e;
+      }
     }
 
-    // Группировка по source_id
     function groupBySource(deals) {
-        const groups = new Map();
-        deals.forEach(deal => {
-            let source = deal.source_id;
-            if (!source || source === '') source = '🔹 Без источника';
-            if (!groups.has(source)) groups.set(source, []);
-            groups.get(source).push(deal);
-        });
-        // сортировка внутри групп по date_create (уже ASC)
-        for (let [key, arr] of groups.entries()) {
-            arr.sort((a,b) => new Date(a.date_create) - new Date(b.date_create));
-        }
-        return groups;
+      const groups = {};
+      deals.forEach(d => {
+        const key = d.source_id ? `Источник #${d.source_id}` : '🔹 Без источника';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(d);
+      });
+      // Сортировка внутри групп: старые сверху (ASC)
+      Object.keys(groups).forEach(k => {
+        groups[k].sort((a, b) => new Date(a.date_create) - new Date(b.date_create));
+      });
+      return groups;
     }
 
-    function renderKanban(groupsMap) {
-        if (!kanbanBoardDiv) return;
-        if (groupsMap.size === 0) {
-            kanbanBoardDiv.innerHTML = `<div class="empty-message" style="width:100%">✨ Нет необработанных сделок ✨</div>`;
-            return;
-        }
-        const boardHtml = Array.from(groupsMap.entries()).map(([sourceName, deals]) => {
-            const cardsHtml = deals.map(deal => {
-                const contactValue = deal.contact_id || (deal.contact_ids && deal.contact_ids[0]) || '—';
-                return `
-                    <div class="deal-card">
-                        <div class="deal-title">${escapeHtml(deal.title || 'Без названия')}</div>
-                        <div class="deal-meta">
-                            <span>📅 ${formatLocalDate(deal.date_create)} (${timeAgo(deal.date_create)})</span>
-                            <span>👤 ${deal.assigned_by_id || 'не назначен'}</span>
-                            <span>📌 ${deal.stage_id || '—'}</span>
-                            <span>📞 ${escapeHtml(contactValue)}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            return `
-                <div class="kanban-column">
-                    <div class="column-header">📂 ${escapeHtml(sourceName)} (${deals.length})</div>
-                    <div class="cards-list">${cardsHtml}</div>
-                </div>
-            `;
-        }).join('');
-        kanbanBoardDiv.innerHTML = boardHtml;
+    // ==========================================
+    // 🎨 ОТРИСОВКА КАНБАНА
+    // ==========================================
+    function renderKanban(groups) {
+      const wrapper = document.getElementById('kanban-wrapper');
+      wrapper.innerHTML = '';
+
+      const keys = Object.keys(groups);
+      if (keys.length === 0) {
+        wrapper.innerHTML = `<div class="empty-state">✨ Нет необработанных сделок ✨</div>`;
+        return;
+      }
+
+      keys.forEach(src => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col';
+        col.innerHTML = `
+          <div class="col-header">
+            <span>${src}</span>
+            <span class="col-count">${groups[src].length}</span>
+          </div>
+          <div class="cards-list"></div>
+        `;
+        const list = col.querySelector('.cards-list');
+        
+        groups[src].forEach(d => {
+          const card = document.createElement('div');
+          card.className = 'deal-card';
+          card.innerHTML = `
+            <div class="deal-title">${d.title || 'Без названия'}</div>
+            <div class="deal-meta">
+              <div class="meta-row"><span>Создана:</span><span class="time-rel">${getRelativeTime(d.date_create)}</span></div>
+              <div class="meta-row"><span>Дата:</span><span>${fmtDate(d.date_create)}</span></div>
+              <div class="meta-row"><span>Менеджер ID:</span><span>${d.assigned_by_id || '—'}</span></div>
+              <div class="meta-row"><span>Стадия:</span><span>${d.stage_id || '—'}</span></div>
+              <div class="meta-row"><span>Контакт:</span><span>${getContactInfo(d)}</span></div>
+            </div>
+          `;
+          list.appendChild(card);
+        });
+        wrapper.appendChild(col);
+      });
     }
 
     async function updateMonitor() {
-        try {
-            const unreactedDeals = await fetchUnreactedDeals();
-            const groups = groupBySource(unreactedDeals);
-            renderKanban(groups);
-            lastUpdateTimestamp = new Date();
-            lastUpdateSpan.innerText = lastUpdateTimestamp.toLocaleTimeString();
-        } catch(e) {
-            console.error('updateMonitor failed:', e);
-        }
+      try {
+        const { unreacted, logs } = await fetchUnreactedDeals();
+        state.deals = unreacted;
+        state.logs = logs;
+        const groups = groupBySource(unreacted);
+        renderKanban(groups);
+        updateFooter();
+      } catch (e) {
+        document.getElementById('kanban-wrapper').innerHTML = `<div class="empty-state">⚠️ Ошибка загрузки. Проверьте консоль.</div>`;
+      }
     }
 
-    // ======================== REALTIME & POLLING ====================================
+    function updateFooter() {
+      const now = new Date();
+      document.getElementById('last-update').textContent = `Последнее обновление: ${now.toLocaleTimeString('ru-RU')}`;
+    }
+
+    // ==========================================
+    // 📡 REALTIME & POLLING
+    // ==========================================
     function subscribeToChanges() {
-        if (realtimeChannel) {
-            supabase.removeChannel(realtimeChannel);
-        }
-        realtimeChannel = supabase
-            .channel('monitor-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'deals_b24' }, () => updateMonitor())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'log_list' }, () => updateMonitor())
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') {
-                    realtimeStatusSpan.innerHTML = '<span class="green-dot"></span> 🟢 Realtime';
-                } else if (err) {
-                    console.warn('Realtime error', err);
-                    realtimeStatusSpan.innerHTML = '<span style="background:#f97316"></span> ⚠️ Realtime отключён, polling работает';
-                }
-            });
+      const channel = db.channel('monitor_changes');
+      channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'deals_b24' }, scheduleRefresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'log_list' }, scheduleRefresh)
+        .subscribe((status) => {
+          state.realtimeConnected = status === 'SUBSCRIBED';
+          document.getElementById('status-dot').className = state.realtimeConnected ? 'status-dot' : 'status-dot offline';
+          document.getElementById('rt-status').textContent = state.realtimeConnected ? '🟢 Realtime' : '🔴 Подключение...';
+        });
+      
+      // Debounce для защиты от спама событий
+      function scheduleRefresh() {
+        clearTimeout(state.debounceTimer);
+        state.debounceTimer = setTimeout(() => updateMonitor(), 800);
+      }
     }
 
-    function setupPolling() {
-        if (pollingInterval) clearInterval(pollingInterval);
-        pollingInterval = setInterval(() => {
-            updateMonitor();
-        }, 30000);
+    function startPolling() {
+      if (state.refreshInterval) clearInterval(state.refreshInterval);
+      state.refreshInterval = setInterval(() => {
+        if (!state.realtimeConnected) updateMonitor();
+      }, 30000);
     }
 
-    // ======================== ОТЧЁТ: СКОРОСТЬ РЕАГИРОВАНИЯ ===========================
-    async function loadReportData(filters) {
-        const { dateFrom, dateTo, sources, managers, positions } = filters;
-        let query = supabase.from('deals_b24').select('id, title, source_id, assigned_by_id, date_create');
-        if (dateFrom) query = query.gte('date_create', dateFrom);
-        if (dateTo) query = query.lte('date_create', dateTo);
-        const { data: deals, error } = await query;
+    // ==========================================
+    // 📈 ОТЧЁТ (СКОРОСТЬ РЕАГИРОВАНИЯ)
+    // ==========================================
+    async function generateReport() {
+      const btn = document.getElementById('btn-run-report');
+      const tbody = document.getElementById('report-body');
+      btn.textContent = 'Загрузка...';
+      btn.disabled = true;
+
+      try {
+        const from = document.getElementById('rep-from').value || new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+        const to = document.getElementById('rep-to').value || new Date().toISOString().split('T')[0];
+        const srcFilter = document.getElementById('rep-source').value;
+        const mgrFilter = document.getElementById('rep-manager').value;
+
+        // Загружаем сделки в диапазоне (ограничим 500 для производительности клиента)
+        let q = db.from('deals_b24')
+          .select('id, date_create, source_id, assigned_by_id, title')
+          .gte('date_create', `${from}T00:00:00`)
+          .lte('date_create', `${to}T23:59:59`)
+          .order('date_create', { ascending: false })
+          .limit(500);
+
+        if (srcFilter) q = q.eq('source_id', srcFilter);
+        if (mgrFilter) q = q.eq('assigned_by_id', mgrFilter);
+
+        const { data: deals, error } = await q;
         if (error) throw error;
-
-        let filteredDeals = deals || [];
-        if (sources && sources.length && !sources.includes('all')) {
-            filteredDeals = filteredDeals.filter(d => sources.includes(String(d.source_id)));
-        }
-        if (managers && managers.length && !managers.includes('all')) {
-            filteredDeals = filteredDeals.filter(d => managers.includes(String(d.assigned_by_id)));
+        if (!deals || deals.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Нет сделок за выбранный период</td></tr>';
+          return;
         }
 
-        const dealIds = filteredDeals.map(d => d.id);
-        if (dealIds.length === 0) return [];
+        const dealIds = deals.map(d => d.id);
+        const { data: logs, error: errL } = await db
+          .from('log_list')
+          .select('deal_id, deal_stage, operation_end, operation_in, status, operation_result, refuse_reason, position')
+          .in('deal_id', dealIds);
+        if (errL) throw errL;
 
-        const { data: logs, error: logsErr } = await supabase
-            .from('log_list')
-            .select('deal_id, deal_stage, operation_end, status, operation_result, refuse_reason, created_at')
-            .in('deal_id', dealIds);
-        if (logsErr) throw logsErr;
-        const logsByDeal = {};
-        (logs || []).forEach(l => {
-            if (!logsByDeal[l.deal_id]) logsByDeal[l.deal_id] = [];
-            logsByDeal[l.deal_id].push(l);
+        // Вычисляем время реакции
+        const reportData = deals.map(d => {
+          const dLogs = logs.filter(l => l.deal_id === d.id);
+          // Ищем минимальное время реакции по приоритету: operation_end > operation_in > log_create
+          let reactTimes = dLogs.map(l => l.operation_end || l.operation_in).filter(Boolean);
+          if (reactTimes.length === 0) return { ...d, reacted: false, hours: null, pos: null };
+          
+          const firstReact = new Date(Math.min(...reactTimes.map(t => new Date(t))));
+          const created = new Date(d.date_create);
+          const diffHours = Math.round(((firstReact - created) / (1000 * 60 * 60)) * 10) / 10;
+          const pos = dLogs.find(l => l.position)?.position || '—';
+          return { ...d, reacted: true, hours: diffHours, pos };
         });
 
-        const result = [];
-        for (const deal of filteredDeals) {
-            const dealLogs = logsByDeal[deal.id] || [];
-            const hasReact = hasReaction(dealLogs);
-            let reactionHours = null;
-            if (hasReact) {
-                reactionHours = getReactionTime(deal.date_create, dealLogs);
-            }
-            // первая реакция - стадия первого подходящего лога
-            let firstReactionStage = null;
-            if (hasReact && dealLogs.length) {
-                const sorted = [...dealLogs].sort((a,b) => (a.operation_end || a.created_at) - (b.operation_end || b.created_at));
-                const firstReactLog = sorted.find(l => {
-                    if (l.deal_stage === 'Уточнение информации' && l.operation_end) return true;
-                    if (l.deal_stage === 'Телефонное интервью' && l.operation_end) return true;
-                    if (l.deal_stage === 'Тестовое задание' && l.status === 'отправка приглашения') return true;
-                    if (l.operation_result === 'Отказ' || l.refuse_reason) return true;
-                    return false;
-                });
-                if (firstReactLog) firstReactionStage = firstReactLog.deal_stage;
-            }
-            result.push({
-                id: deal.id,
-                source: deal.source_id || 'Без источника',
-                manager: deal.assigned_by_id || 'Неизвестно',
-                date_create: deal.date_create,
-                hasReaction: hasReact,
-                reactionHours: reactionHours,
-                firstReactionStage: firstReactionStage
-            });
-        }
-        return result;
-    }
-
-    async function buildReport() {
-        const dateFrom = document.getElementById('dateFrom').value;
-        const dateTo = document.getElementById('dateTo').value;
-        let sources = Array.from(document.getElementById('sourceFilter').selectedOptions).map(o => o.value);
-        let managers = Array.from(document.getElementById('managerFilter').selectedOptions).map(o => o.value);
-        let positions = Array.from(document.getElementById('positionFilter').selectedOptions).map(o => o.value);
-        if (sources.includes('all')) sources = null;
-        if (managers.includes('all')) managers = null;
-        if (positions.includes('all')) positions = null;
-
-        const groupBy = document.querySelector('input[name="groupBy"]:checked').value;
-
-        try {
-            const reportData = await loadReportData({ dateFrom, dateTo, sources, managers, positions });
-            if (reportData.length === 0) {
-                document.getElementById('reportResult').innerHTML = '<div class="empty-message">Нет сделок за выбранный период</div>';
-                return;
-            }
-            // дополнительная фильтрация по должности (стадия первой реакции)
-            let filtered = reportData;
-            if (positions && positions.length) {
-                filtered = filtered.filter(d => d.firstReactionStage && positions.includes(d.firstReactionStage));
-            }
-            // группировка и метрики
-            const groupsMap = new Map();
-            for (const item of filtered) {
-                let key;
-                if (groupBy === 'month') {
-                    const d = new Date(item.date_create);
-                    key = `${d.getFullYear()}-${d.getMonth()+1}`;
-                } else if (groupBy === 'source') key = item.source;
-                else if (groupBy === 'manager') key = item.manager;
-                else key = item.firstReactionStage || 'Без стадии';
-                if (!groupsMap.has(key)) groupsMap.set(key, []);
-                groupsMap.get(key).push(item);
-            }
-
-            const tableRows = [];
-            for (let [groupName, items] of groupsMap.entries()) {
-                const total = items.length;
-                const reacted = items.filter(i => i.hasReaction).length;
-                const reactionHoursList = items.filter(i => i.reactionHours !== null).map(i => i.reactionHours);
-                const avg = reactionHoursList.length ? (reactionHoursList.reduce((a,b)=>a+b,0)/reactionHoursList.length).toFixed(1) : '—';
-                const sorted = [...reactionHoursList].sort((a,b)=>a-b);
-                const median = sorted.length ? sorted[Math.floor(sorted.length/2)].toFixed(1) : '—';
-                const minVal = sorted.length ? sorted[0].toFixed(1) : '—';
-                const maxVal = sorted.length ? sorted[sorted.length-1].toFixed(1) : '—';
-                tableRows.push(`
-                    <tr>
-                        <td>${escapeHtml(groupName)}</td>
-                        <td>${total}</td>
-                        <td>${reacted}</td>
-                        <td>${avg !== '—' ? avg+' ч' : '—'}</td>
-                        <td>${median !== '—' ? median+' ч' : '—'}</td>
-                        <td>${minVal !== '—' ? minVal+' ч' : '—'}</td>
-                        <td>${maxVal !== '—' ? maxVal+' ч' : '—'}</td>
-                    </tr>
-                `);
-            }
-            const tableHtml = `
-                <div class="report-table-wrapper">
-                    <table>
-                        <thead><tr><th>Группа</th><th>Кол-во сделок</th><th>Отреагировано</th><th>Среднее время (ч)</th><th>Медиана (ч)</th><th>Мин (ч)</th><th>Макс (ч)</th></tr></thead>
-                        <tbody>${tableRows.join('')}</tbody>
-                    </table>
-                </div>
-            `;
-            document.getElementById('reportResult').innerHTML = tableHtml;
-            window.__lastReportData = { filtered, groupBy, groupsMap };
-        } catch(err) {
-            console.error(err);
-            document.getElementById('reportResult').innerHTML = '<div class="error-msg">Ошибка формирования отчёта</div>';
-        }
-    }
-
-    function exportReportCSV() {
-        if (!window.__lastReportData) return;
-        const { groupsMap } = window.__lastReportData;
-        let csvRows = [['Группа','Сделок всего','Отреагировано','Среднее(ч)','Медиана(ч)','Мин(ч)','Макс(ч)']];
-        for (let [groupName, items] of groupsMap.entries()) {
-            const total = items.length;
-            const reacted = items.filter(i => i.hasReaction).length;
-            const hoursList = items.filter(i => i.reactionHours !== null).map(i => i.reactionHours);
-            const avg = hoursList.length ? (hoursList.reduce((a,b)=>a+b,0)/hoursList.length).toFixed(1) : '—';
-            const sorted = [...hoursList].sort((a,b)=>a-b);
-            const median = sorted.length ? sorted[Math.floor(sorted.length/2)].toFixed(1) : '—';
-            const minVal = sorted.length ? sorted[0].toFixed(1) : '—';
-            const maxVal = sorted.length ? sorted[sorted.length-1].toFixed(1) : '—';
-            csvRows.push([`"${groupName}"`, total, reacted, avg, median, minVal, maxVal]);
-        }
-        const csvContent = csvRows.map(row => row.join(',')).join('\n');
-        const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'report_speed.csv';
-        link.click();
-        URL.revokeObjectURL(link.href);
-    }
-
-    async function populateFilterOptions() {
-        // источники, менеджеры, должности (стадии из логов)
-        const { data: deals } = await supabase.from('deals_b24').select('source_id, assigned_by_id').limit(500);
-        const sourcesSet = new Set();
-        const managersSet = new Set();
-        deals?.forEach(d => { if(d.source_id) sourcesSet.add(d.source_id); if(d.assigned_by_id) managersSet.add(d.assigned_by_id); });
-        const sourceSelect = document.getElementById('sourceFilter');
-        sourceSelect.innerHTML = '<option value="all">Все источники</option>' + Array.from(sourcesSet).map(s => `<option value="${s}">${s}</option>`).join('');
-        const managerSelect = document.getElementById('managerFilter');
-        managerSelect.innerHTML = '<option value="all">Все менеджеры</option>' + Array.from(managersSet).map(m => `<option value="${m}">${m}</option>`).join('');
-        const { data: logsStages } = await supabase.from('log_list').select('deal_stage').limit(300);
-        const stagesSet = new Set();
-        logsStages?.forEach(l => { if(l.deal_stage) stagesSet.add(l.deal_stage); });
-        const posSelect = document.getElementById('positionFilter');
-        posSelect.innerHTML = '<option value="all">Все стадии</option>' + Array.from(stagesSet).map(st => `<option value="${st}">${st}</option>`).join('');
-    }
-
-    // ======================== ИНИЦИАЛИЗАЦИЯ И УПРАВЛЕНИЕ ВКЛАДКАМИ ===================
-    function initSupabaseClient() {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    }
-
-    function switchTab(tabId) {
-        currentTab = tabId;
-        if (tabId === 'kanban') {
-            kanbanPanel.style.display = 'block';
-            reportPanel.style.display = 'none';
-            updateMonitor();
-        } else {
-            kanbanPanel.style.display = 'none';
-            reportPanel.style.display = 'block';
-            populateFilterOptions().then(() => buildReport());
-        }
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            if (btn.dataset.tab === tabId) btn.classList.add('active');
-            else btn.classList.remove('active');
+        // Группировка (например, по источнику)
+        const groups = {};
+        reportData.forEach(d => {
+          const key = d.source_id ? `Источник #${d.source_id}` : 'Без источника';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(d);
         });
+
+        // Агрегация метрик
+        const aggregated = Object.keys(groups).map(key => {
+          const items = groups[key];
+          const reacted = items.filter(i => i.reacted);
+          const hours = reacted.map(i => i.hours).sort((a,b) => a - b);
+          const avg = hours.length ? hours.reduce((a,b)=>a+b,0)/hours.length : 0;
+          const med = hours.length ? hours[Math.floor(hours.length/2)] : 0;
+          const min = hours.length ? hours[0] : 0;
+          const max = hours.length ? hours[hours.length-1] : 0;
+          return {
+            group: key,
+            total: items.length,
+            reactedCount: reacted.length,
+            avg: avg.toFixed(1),
+            med: med.toFixed(1),
+            range: `${min.toFixed(1)} / ${max.toFixed(1)}`
+          };
+        });
+
+        // Рендер таблицы
+        tbody.innerHTML = aggregated.map(r => `
+          <tr>
+            <td>${r.group}</td>
+            <td>${r.total}</td>
+            <td>${r.reactedCount}</td>
+            <td>${r.avg}</td>
+            <td>${r.med}</td>
+            <td>${r.range}</td>
+          </tr>
+        `).join('');
+
+      } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:red;">Ошибка построения отчёта</td></tr>';
+      } finally {
+        btn.textContent = 'Построить';
+        btn.disabled = false;
+      }
     }
 
-    function escapeHtml(str) { if(!str) return ''; return String(str).replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+    // Экспорт в CSV
+    function exportCSV() {
+      const rows = [['Группа','Всего','Реагировано','Ср. время (ч)','Медиана (ч)','Мин/Макс (ч)']];
+      document.querySelectorAll('#report-body tr').forEach(tr => {
+        const cells = Array.from(tr.children).map(c => c.textContent.trim());
+        if (cells.length >= 6) rows.push(cells);
+      });
+      const csv = rows.map(r => r.join(';')).join('\n');
+      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `report_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+    }
 
-    document.addEventListener('DOMContentLoaded', async () => {
-        initSupabaseClient();
-        await updateMonitor();
+    // Заполнение фильтров
+    function populateFilters() {
+      const sources = [...new Set(state.deals.map(d => d.source_id).filter(Boolean))];
+      const mgrs = [...new Set(state.deals.map(d => d.assigned_by_id).filter(Boolean))];
+      const selSrc = document.getElementById('rep-source');
+      const selMgr = document.getElementById('rep-manager');
+      sources.forEach(s => selSrc.add(new Option(`Источник #${s}`, s)));
+      mgrs.forEach(m => selMgr.add(new Option(`Менеджер #${m}`, m)));
+    }
+
+    // ==========================================
+    // 🚀 ИНИЦИАЛИЗАЦИЯ
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', () => {
+      // Установка дат отчёта по умолчанию
+      const end = new Date();
+      const start = new Date();
+      start.setMonth(start.getMonth() - 1);
+      document.getElementById('rep-to').value = end.toISOString().split('T')[0];
+      document.getElementById('rep-from').value = start.toISOString().split('T')[0];
+
+      // Переключение вкладок
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const view = btn.dataset.view;
+          document.getElementById('view-kanban').hidden = view !== 'kanban';
+          document.getElementById('view-report').hidden = view !== 'report';
+          if (view === 'report') populateFilters();
+        });
+      });
+
+      // Кнопки
+      document.getElementById('btn-refresh').addEventListener('click', updateMonitor);
+      document.getElementById('btn-run-report').addEventListener('click', generateReport);
+      document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+      // Первый запуск
+      updateMonitor().then(() => {
+        populateFilters();
         subscribeToChanges();
-        setupPolling();
-        manualRefreshBtn.addEventListener('click', () => updateMonitor());
-        document.getElementById('applyReportBtn').addEventListener('click', () => buildReport());
-        document.getElementById('exportCsvBtn').addEventListener('click', exportReportCSV);
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-        });
-        // начальные значения дат для отчета (последние 30 дней)
-        const to = new Date();
-        const from = new Date(); from.setDate(to.getDate() - 30);
-        document.getElementById('dateTo').value = to.toISOString().slice(0,10);
-        document.getElementById('dateFrom').value = from.toISOString().slice(0,10);
-        switchTab('kanban');
+        startPolling();
+      });
     });
-</script>
+  </script>
 </body>
 </html>
